@@ -35,75 +35,172 @@ func NewCalculator() *Calculator {
 	}
 }
 
-// evalExpr evalúa una expresión matemática simple (sin paréntesis, solo + - * / %)
+// evalExpr evalúa una expresión matemática con soporte para paréntesis, jerarquía de operaciones y números negativos
 func evalExpr(expr string) (float64, error) {
-	tokens := tokenize(expr)
+	tokens, err := tokenizeAdvanced(expr)
+	if err != nil {
+		return 0, err
+	}
 	if len(tokens) == 0 {
-		return 0, fmt.Errorf("expresión vacía")
+		return 0, fmt.Errorf("empty expression")
 	}
-	// Primero multiplicación, división, módulo
-	for i := 0; i < len(tokens); i++ {
-		if tokens[i] == "*" || tokens[i] == "/" || tokens[i] == "%" {
-			left, _ := strconv.ParseFloat(tokens[i-1], 64)
-			right, _ := strconv.ParseFloat(tokens[i+1], 64)
-			var res float64
-			switch tokens[i] {
-			case "*":
-				res = left * right
-			case "/":
-				if right == 0 {
-					// Si se divide por cero, devolver el número que se intentó dividir
-					res = left
-				} else {
-					res = left / right
-				}
-			case "%":
-				if right == 0 {
-					// Si se divide por cero, devolver el número que se intentó dividir
-					res = left
-				} else {
-					res = float64(int(left) % int(right))
-				}
-			}
-			tokens = append(tokens[:i-1], append([]string{fmt.Sprintf("%v", res)}, tokens[i+2:]...)...)
-			i--
-		}
+	res, idx, err := parseExpr(tokens, 0)
+	if err != nil {
+		return 0, err
 	}
-	// Luego suma y resta
-	res, _ := strconv.ParseFloat(tokens[0], 64)
-	for i := 1; i < len(tokens); i += 2 {
-		op := tokens[i]
-		num, _ := strconv.ParseFloat(tokens[i+1], 64)
-		switch op {
-		case "+":
-			res += num
-		case "-":
-			res -= num
-		}
+	if idx != len(tokens) {
+		return 0, fmt.Errorf("invalid syntax: unexpected token '%s'", tokens[idx])
 	}
 	return res, nil
 }
 
-// tokenize separa la expresión en números y operadores
-func tokenize(expr string) []string {
+// tokenizeAdvanced separa la expresión en números, operadores y paréntesis, validando caracteres
+func tokenizeAdvanced(expr string) ([]string, error) {
 	expr = strings.ReplaceAll(expr, " ", "")
 	tokens := []string{}
 	num := ""
-	for _, r := range expr {
+	for i, r := range expr {
 		if unicode.IsDigit(r) || r == '.' {
 			num += string(r)
-		} else {
-			if num != "" {
-				tokens = append(tokens, num)
-				num = ""
-			}
-			tokens = append(tokens, string(r))
+			continue
 		}
+		if r == '-' && (i == 0 || expr[i-1] == '(' || isOperator(rune(expr[i-1]))) {
+			// Soporta negativos al inicio, después de '(', o después de operador
+			num += string(r)
+			continue
+		}
+		if num != "" {
+			tokens = append(tokens, num)
+			num = ""
+		}
+		if isOperator(r) || r == '(' || r == ')' {
+			tokens = append(tokens, string(r))
+			continue
+		}
+		return nil, fmt.Errorf("invalid character in expression: '%c'", r)
 	}
 	if num != "" {
 		tokens = append(tokens, num)
 	}
-	return tokens
+	return tokens, nil
+}
+
+func isOperator(r rune) bool {
+	return r == '+' || r == '-' || r == '*' || r == '/' || r == '%'
+}
+
+// parseExpr implementa la jerarquía de operaciones y paréntesis
+func parseExpr(tokens []string, idx int) (float64, int, error) {
+	return parseAddSub(tokens, idx)
+}
+
+func parseAddSub(tokens []string, idx int) (float64, int, error) {
+	res, idx, err := parseMulDivMod(tokens, idx)
+	if err != nil {
+		return 0, idx, err
+	}
+	for idx < len(tokens) {
+		tok := tokens[idx]
+		if tok != "+" && tok != "-" {
+			break
+		}
+		idx++
+		right, nextIdx, err := parseMulDivMod(tokens, idx)
+		if err != nil {
+			return 0, idx, err
+		}
+		if tok == "+" {
+			res += right
+		} else {
+			res -= right
+		}
+		idx = nextIdx
+	}
+	return res, idx, nil
+}
+
+func parseMulDivMod(tokens []string, idx int) (float64, int, error) {
+	res, idx, err := parseFactor(tokens, idx)
+	if err != nil {
+		return 0, idx, err
+	}
+	for idx < len(tokens) {
+		tok := tokens[idx]
+		if tok != "*" && tok != "/" && tok != "%" {
+			break
+		}
+		idx++
+		right, nextIdx, err := parseFactor(tokens, idx)
+		if err != nil {
+			return 0, idx, err
+		}
+		switch tok {
+		case "*":
+			res *= right
+		case "/":
+			if right == 0 {
+				res = res // mismo comportamiento: devolver el número original
+			} else {
+				res /= right
+			}
+		case "%":
+			if right == 0 {
+				res = res
+			} else {
+				res = float64(int(res) % int(right))
+			}
+		}
+		idx = nextIdx
+	}
+	return res, idx, nil
+}
+
+func parseFactor(tokens []string, idx int) (float64, int, error) {
+	if idx >= len(tokens) {
+		return 0, idx, fmt.Errorf("unexpected end of expression")
+	}
+	tok := tokens[idx]
+	if tok == "(" {
+		res, nextIdx, err := parseExpr(tokens, idx+1)
+		if err != nil {
+			return 0, idx, err
+		}
+		if nextIdx >= len(tokens) || tokens[nextIdx] != ")" {
+			return 0, idx, fmt.Errorf("unmatched parenthesis")
+		}
+		return res, nextIdx + 1, nil
+	}
+	// Soporta números negativos
+	if tok == "-" && idx+1 < len(tokens) && (isNumber(tokens[idx+1]) || tokens[idx+1] == "(") {
+		res, nextIdx, err := parseFactor(tokens, idx+1)
+		if err != nil {
+			return 0, idx, err
+		}
+		return -res, nextIdx, nil
+	}
+	if isNumber(tok) {
+		val, err := strconv.ParseFloat(tok, 64)
+		if err != nil {
+			return 0, idx, fmt.Errorf("invalid number: %s", tok)
+		}
+		return val, idx + 1, nil
+	}
+	return 0, idx, fmt.Errorf("invalid token: %s", tok)
+}
+
+func isNumber(s string) bool {
+	if len(s) == 0 {
+		return false
+	}
+	if s[0] == '-' && len(s) > 1 {
+		s = s[1:]
+	}
+	for _, r := range s {
+		if !unicode.IsDigit(r) && r != '.' {
+			return false
+		}
+	}
+	return true
 }
 
 // borderedWhite crea una caja blanca con ancho fijo y padding

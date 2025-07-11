@@ -5,6 +5,9 @@ Calculadora de escritorio desarrollada en Go usando el framework Fyne.
 ## Características
 
 - Suma, resta, multiplicación, división y residuo.
+- Soporte completo de jerarquía de operaciones y paréntesis anidados.
+- Permite números negativos en cualquier posición válida.
+- Validación robusta de errores de sintaxis y caracteres inválidos (mensajes claros en inglés).
 - Historial de operaciones compacto e interactivo.
 - Entrada unificada: puedes usar tanto los botones como el teclado físico para ingresar operaciones completas, sin necesidad de enfocar el campo de entrada.
 - Captura global de teclas: la aplicación responde a las teclas numéricas y operadores aunque el campo de entrada no tenga el foco.
@@ -38,8 +41,10 @@ Calculadora de escritorio desarrollada en Go usando el framework Fyne.
 
 ## Uso
 
-- Ingresa operaciones completas usando los botones o el teclado físico (por ejemplo: `12+7*3/2`).
+- Ingresa operaciones completas usando los botones o el teclado físico (por ejemplo: `12+7*3/2`, `-(2+3)*4`, `2*(3+4*2)`).
+- Puedes usar paréntesis y números negativos en cualquier posición válida.
 - Presiona `=` o la tecla Enter para ver el resultado.
+- Si la expresión es inválida, se mostrará un mensaje de error en inglés.
 - El historial muestra todas las operaciones realizadas de forma compacta.
 - Haz clic en cualquier resultado del historial para usarlo como punto de partida para una nueva operación (no modifica la operación original en el historial).
 - El botón `C` limpia la entrada y el resultado.
@@ -61,11 +66,10 @@ Calculadora de escritorio desarrollada en Go usando el framework Fyne.
 
 - `Operation`: Estructura que almacena una operación realizada (expresión y resultado).
 - `Calculator`: Estructura que mantiene el estado de la calculadora, el historial y referencias a los widgets de la interfaz.
-- Métodos principales:
-  - `appendInput(val string)`: Agrega caracteres a la entrada actual.
-  - `calculate()`: Evalúa la expresión matemática y actualiza el historial.
-  - `clear()`: Reinicia la calculadora.
-  - `continueFromHistory(index int)`: Permite usar el resultado de una operación previa como nuevo punto de partida.
+- Motor de evaluación:
+  - `evalExpr(expr string)`: Evalúa expresiones matemáticas completas, soportando paréntesis, jerarquía de operaciones y números negativos. Devuelve error si la sintaxis es inválida o hay caracteres no permitidos.
+  - Validación robusta: nunca se produce un panic por acceso fuera de rango.
+  - Los espacios en blanco se ignoran, pero cualquier otro carácter inválido genera error.
 
 ### Interfaz gráfica (Fyne)
 
@@ -83,10 +87,11 @@ Calculadora de escritorio desarrollada en Go usando el framework Fyne.
 ### Pruebas
 
 - El archivo `main_test.go` contiene pruebas unitarias para:
-  - Operaciones básicas (suma, resta, multiplicación, división, módulo).
-  - División por cero.
-  - Historial de operaciones.
-  - Continuar desde el historial.
+  - Operaciones con jerarquía y paréntesis.
+  - Números negativos y anidados.
+  - Errores de sintaxis y caracteres inválidos.
+  - División por cero (comportamiento especial).
+- Los tests han sido simplificados y adaptados a la lógica moderna de la calculadora.
 - Para ejecutar los tests:
 
   ```bash
